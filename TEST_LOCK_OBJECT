@@ -12,11 +12,11 @@ report test_lock_object.
 
 tables: sscrfields.
 
-include zddm_test_lock_ob_dt.
-include zddm_test_lock_ob_ss.
-include zddm_test_lock_ob_cl.
-include zddm_test_lock_ob_fm.
-include zddm_test_lock_ob_scr100.
+include test_lock_ob_dt.
+include test_lock_ob_ss.
+include test_lock_ob_cl.
+include test_lock_ob_fm.
+include test_lock_ob_scr100.
 
 
 *  кнопка на CC экране
