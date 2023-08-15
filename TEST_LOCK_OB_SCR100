@@ -1,0 +1,60 @@
+*----------------------------------------------------------------------*
+***INCLUDE TEST_LOCK_OB_SCR100.
+*----------------------------------------------------------------------*
+MODULE status_0100 OUTPUT.
+  CLEAR fcode[].
+
+  IF go_table->gv_error IS NOT INITIAL.
+    fcode-code = 'CLOSE'.
+    APPEND fcode.
+  ENDIF.
+
+  DATA: l_plan    TYPE zddm_test-pplan,
+        l_version TYPE zddm_test-version.
+
+  l_plan = go_table->gv_plan-pplan.
+  l_version = go_table->gv_plan-version.
+  SHIFT: l_plan LEFT DELETING LEADING '0',
+         l_version LEFT DELETING LEADING '0'.
+
+
+  SET PF-STATUS 'MAIN' EXCLUDING fcode.
+  SET TITLEBAR 'TITL_0100' WITH l_plan l_version.
+
+ENDMODULE.                 " STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE uscr100.
+    WHEN 'BACK'.
+      LEAVE TO SCREEN 0.
+    WHEN 'CLOSE'.
+      LEAVE TO SCREEN 0.
+*    when 'EXIT'.
+*      call screen 100.
+  ENDCASE.
+ENDMODULE.                 " USER_
+
+
+*----------------------------------------------------------------------*
+*  MODULE display_alv OUTPUT
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+MODULE display_alv OUTPUT.
+  go_table->display_alv( ).
+ENDMODULE.                    "display_alv OUTPUT
+
+
+*----------------------------------------------------------------------*
+*  MODULE exit_program_scr100 INPUT
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+MODULE exit_program_scr100 INPUT.
+  go_table->unblock_db( ).
+  LEAVE PROGRAM.
+ENDMODULE.                    "exit_program_scr100 INPUT

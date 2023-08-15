@@ -1,0 +1,722 @@
+*----------------------------------------------------------------------*
+***INCLUDE TEST_LOCK_OB_CL.
+*----------------------------------------------------------------------*
+
+class lcl_alv_table definition.
+
+  public section.
+    constants:
+      gc_languege_ru type makt-spras value 'R'.
+    "gc_lock_object
+
+    types: begin of gtys_table_v.
+            include type zddm_test.
+    types:icon_act type icon_text,
+          ind_act(1),   "I-add, D -deete, U update
+     end of gtys_table_v.
+
+    data:
+          gv_icon_ok type icons-text,
+          gv_icon_warning type icons-text,
+          gv_icon_cancel type icons-text.
+
+    data: gv_block type flag.
+
+
+    types: gtys_table type gtys_table_v."zddm_test.
+    data: gt_table type table of gtys_table.
+
+    types: begin of gtys_plan,
+     pplan type zddm_test-pplan,
+     version type zddm_test-version,
+     end of gtys_plan.
+
+    data: gv_plan type gtys_plan,
+          gv_edit_mode type flag,
+          gv_error type flag.
+
+    data: go_custom_cont type ref to cl_gui_custom_container,
+          go_cont_all    type ref to cl_gui_docking_container,
+          go_splitter    type ref to cl_gui_splitter_container,
+
+          go_cont     type ref to cl_gui_container,
+          go_cont_top type ref to cl_gui_container.
+
+    data go_alv  type ref to cl_gui_alv_grid.
+
+
+    methods:
+      constructor importing iv_pplan     type gtys_table-pplan
+                            iv_version   type gtys_table-version
+                            iv_edit_mode type flag optional
+                            iv_error     type flag optional
+                  exceptions cx_error_parameter
+                             cx_data_not_found
+                             cx_block_db,
+
+      check_create_ob importing iv_plan type gtys_plan
+                      returning value(rv_error) type flag,
+      check_with_null_data returning value(rv_value) type flag,
+
+      get_plan returning value(rv_plan) type gtys_plan,
+      set_plan importing iv_plan type gtys_plan
+                         iv_error type flag,
+
+      read_table_from_db importing iv_plan type gtys_plan optional
+                         returning value(rt_table) like gt_table,
+      set_icon,
+
+      block_db returning value(rv_value) type flag,
+      unblock_db,
+
+      display_alv,
+
+      "обработка доп кнопок на толбаре
+      handle_user_command for event user_command of cl_gui_alv_grid importing sender e_ucomm,
+      handle_toolbar_alv for event toolbar of cl_gui_alv_grid importing e_object,
+      handle_toolbar_alv2 for event toolbar of cl_gui_alv_grid importing e_object sender,
+      handle_data_changed for event data_changed of cl_gui_alv_grid importing er_data_changed e_onf4
+                                                              e_onf4_before e_onf4_after e_ucomm.
+
+
+  private section.
+
+    methods:
+  "alv
+    get_fieldcatalog_alv returning value(rt_field) type lvc_t_fcat,
+    get_sorted_alv returning value(rt_sort) type lvc_t_sort,
+    get_layout_view_alv returning value(rs_layout) type lvc_s_layo,
+    get_function_alv returning value(rt_func) type ui_functions,
+
+
+    _set_block changing cv_block type flag
+                        cv_descr type string,
+    _set_unblock changing cv_unblock type flag
+                          cv_descr type string.
+
+    "user
+    "_update_table_in_db IMPORTING it_table like gt_table.
+
+
+
+endclass.                    "lcl_alv_table DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS lc_alv_table IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+class lcl_alv_table implementation.
+
+  method constructor.
+    data: ls_plan type gtys_plan,
+          l_lines type i.
+
+    ls_plan-pplan = iv_pplan.
+    ls_plan-version = iv_version.
+
+    if check_create_ob( ls_plan ) is not initial.
+
+      if p_err_cx is not initial.
+        raise cx_error_parameter.
+      endif.
+    else.
+      set_plan( exporting iv_plan = ls_plan
+                          iv_error = iv_error ).
+
+      read_table_from_db( ).
+
+
+      if check_with_null_data( ) is not initial.
+        if p_err_nd is not initial.
+          raise cx_data_not_found.
+        endif.
+      endif.
+
+      if block_db( ) is initial.
+        raise cx_block_db.
+      endif.
+
+
+    endif.
+  endmethod.                    "constructor
+
+  method set_icon.
+* Иконка ok
+    gv_icon_ok = zcl_base_utilites=>get_icon( iv_name = 'ICON_GREEN_LIGHT' iv_info = 'Новая запись' ).
+* Иконка
+    gv_icon_warning = zcl_base_utilites=>get_icon( iv_name = 'ICON_YELLOW_LIGHT' iv_info = 'Изменение записи' ).
+* Иконка cancel
+    gv_icon_cancel = zcl_base_utilites=>get_icon( iv_name = 'ICON_RED_LIGHT' iv_info = 'Удаление записи' ).
+  endmethod.                    "set_icon
+
+  method block_db.
+
+    data: lv_block type flag,
+          lv_descr type string.
+    clear rv_value.
+
+    _set_block( changing cv_block = lv_block
+                         cv_descr = lv_descr ).
+
+    rv_value = lv_block.
+  endmethod.                    "block_db
+
+  method unblock_db.
+
+    data: lv_block type flag,
+          lv_descr type string.
+
+    _set_unblock( changing cv_unblock = lv_block
+                          cv_descr = lv_descr ).
+
+  endmethod.                    "unblock_db
+
+  method _set_unblock.
+
+  clear cv_unblock.
+  call function 'DEQUEUE_EZDDM_TEST' "потом нужно будет снять блокировку при сохранении
+    exporting
+        mode_zddm_test = abap_on
+        mandt          = sy-mandt
+        pplan          = gv_plan-pplan
+        version        = gv_plan-version
+    exceptions
+      foreign_lock = 1
+      others       = 2.
+
+  if sy-subrc = 0. "если удалось разаблокировать, то ранее была блокирована
+    cv_unblock = abap_on.
+  else. "не удалось разблокировать, значит не была блокирована, либо просто не удалось
+    cv_unblock = space.
+  endif.
+
+  endmethod.                    "_set_unblock
+
+  method _set_block.
+
+    clear: cv_block, cv_descr.
+    call function 'ENQUEUE_EZDDM_TEST' "потом нужно будет снять блокировку при сохранении
+      exporting
+        mode_zddm_test = abap_on
+        mandt          = sy-mandt
+        pplan          = gv_plan-pplan
+        version        = gv_plan-version
+      exceptions
+        foreign_lock = 1
+        others       = 2.
+
+    if sy-subrc = 0. "если удалось заблокировать, то ранее не блокирована
+      cv_block = abap_on.
+    else. "не удалось заблокировать, значит уже кто-то работает
+      cv_block = space.
+
+      data: t_usr03 type usr03,
+            lv_name type sy-uname.
+
+      lv_name = sy-msgv1.
+      call function 'SUSR_USER_ADDRESS_READ'
+        exporting
+          user_name              = lv_name
+          cache_results          = abap_on
+        importing
+          user_usr03             = t_usr03
+        exceptions
+          user_address_not_found = 1
+          others                 = 2.
+      if sy-subrc = 0.
+        concatenate lv_name t_usr03-name2 t_usr03-name1 'тел:' t_usr03-telnr into cv_descr separated by space.
+      endif.
+    endif.
+  endmethod.                    "set_block
+
+
+  method check_with_null_data.
+    data: l_lines type i.
+
+    check p_err_nd is not initial.
+
+    describe table gt_table lines l_lines.
+    if l_lines = 0.
+      rv_value = 'X'.
+    endif.
+  endmethod.                    "check_with_null_data
+
+
+  method read_table_from_db.
+    data: ls_plan type gtys_plan.
+
+    clear ls_plan.
+    ls_plan = gv_plan.
+
+    select * from zddm_test
+      into corresponding fields of table gt_table
+      where pplan = gv_plan-pplan and
+      version = gv_plan-version.
+
+  endmethod.                    "read_table_from_db
+
+
+  method set_plan.
+    gv_plan = iv_plan.
+    gv_error = iv_error.
+  endmethod.                    "set_plan
+
+  method get_plan.
+    rv_plan = gv_plan.
+  endmethod.                    "get_plan
+
+  method check_create_ob.
+    if p_error is not initial.
+      "rv_error = 'X'.
+    endif.
+  endmethod.                    "check_create_ob
+
+  method display_alv.
+
+    data: ls_layout type lvc_s_layo,
+          ls_variant type disvariant.
+
+    data: lt_field type lvc_t_fcat,
+          lt_sort type lvc_t_sort,
+          lt_func type ui_functions.
+
+
+    data : text_editor type ref to cl_gui_textedit,
+           lt_texttab  type soli_tab,
+           ls_texttab  type soli.
+
+    if go_cont_all is initial.
+      if p_txted is initial.
+        create object go_cont_all
+          exporting
+            repid = sy-repid
+            dynnr = sy-dynnr
+            side  = cl_gui_docking_container=>dock_at_top
+            ratio = 85.
+      endif.
+
+      if p_txted is not initial.
+        if go_splitter is initial.
+          create object go_splitter
+            exporting
+              parent  = go_splitter->default_screen
+              rows    = 2
+              columns = 1.
+
+          call method go_splitter->set_row_mode
+            exporting
+              mode = cl_gui_splitter_container=>mode_absolute.
+
+
+          call method go_splitter->set_row_sash
+            exporting
+              id    = 1
+              type  = cl_gui_splitter_container=>type_sashvisible
+              value = cl_gui_splitter_container=>false.
+
+          call method go_splitter->set_row_sash
+            exporting
+              id    = 1
+              type  = cl_gui_splitter_container=>type_movable
+              value = cl_gui_splitter_container=>false.
+
+
+          call method go_splitter->get_container
+            exporting
+              row       = 1
+              column    = 1
+            receiving
+              container = go_cont_top.
+
+          call method go_splitter->get_container
+            exporting
+              row       = 2
+              column    = 1
+            receiving
+              container = go_cont.
+
+          go_splitter->set_row_height( exporting id = 1 height = 50 ).
+        endif.
+      else.
+        go_cont = go_cont_all.
+      endif.
+
+    endif.
+
+
+    if text_editor is initial and go_cont_top is not initial.
+      create object text_editor
+        exporting
+          parent        = go_cont_top
+          wordwrap_mode = text_editor->true.
+
+      call method text_editor->set_toolbar_mode.
+
+      call method text_editor->set_readonly_mode
+        exporting
+          readonly_mode = text_editor->true.
+
+      call method text_editor->set_statusbar_mode.
+
+      clear lt_texttab.
+      ls_texttab = gv_plan-pplan.
+      append ls_texttab to lt_texttab.
+      append ls_texttab to lt_texttab.
+
+      text_editor->set_text_as_r3table( exporting table = lt_texttab[] ).
+    endif.
+
+
+    if go_alv is initial.
+      create object go_alv
+        exporting
+          i_appl_events = abap_on
+          i_parent      = go_cont.
+
+
+
+      set_icon( ).
+
+      ls_variant-report = sy-repid.
+      lt_field = get_fieldcatalog_alv( ).
+      lt_sort = get_sorted_alv( ).
+      ls_layout = get_layout_view_alv( ).
+      lt_func = get_function_alv( ).
+
+      call method go_alv->set_table_for_first_display
+        exporting
+          is_variant                    = ls_variant
+          i_save                        = 'A'
+          is_layout                     = ls_layout
+          it_toolbar_excluding          = lt_func
+        changing
+          it_outtab                     = gt_table
+          it_fieldcatalog               = lt_field
+          it_sort                       = lt_sort
+        exceptions
+          invalid_parameter_combination = 1
+          program_error                 = 2
+          too_many_lines                = 3
+          others                        = 4.
+
+
+*      go_alv->register_edit_event( i_event_id = cl_gui_alv_grid=>mc_evt_enter ).
+*      go_alv->register_edit_event( i_event_id = cl_gui_alv_grid=>mc_evt_modified ).
+*      set handler handle_toolbar for go_alv.
+*      go_alv->set_toolbar_interactive( ). "need fror toolbar
+
+      go_alv->register_edit_event( exporting i_event_id = cl_gui_alv_grid=>mc_evt_enter ).
+      go_alv->register_edit_event( exporting i_event_id = cl_gui_alv_grid=>mc_evt_modified ).
+
+      set handler handle_data_changed for go_alv.
+      set handler handle_user_command for go_alv.
+      "SET HANDLER handle_toolbar_alv FOR go_alv.
+      set handler handle_toolbar_alv2 for go_alv.
+      go_alv->set_toolbar_interactive( ). "need fror toolbar
+
+      call method go_alv->refresh_table_display( ).
+    else.
+      data ls_stable type lvc_s_stbl.
+      ls_stable-row = abap_on.
+      ls_stable-col = abap_on.
+
+      go_alv->refresh_table_display( is_stable = ls_stable ).
+    endif.
+
+    call method cl_gui_cfw=>flush.
+
+  endmethod.                    "display_alv
+
+
+  method handle_user_command.
+    case e_ucomm.
+      when 'ZFC1'.
+        message 'click _temp buttom toolbar' type 'I'.
+        "me->_temp_get_selected_rows( sender ).
+      when 'TEMPIND1'. message 'TEMPIND1' type 'I'.
+      when 'TEMPIND2'.
+        message 'TEMPIND2' type 'S'.
+        "when 'SC' .message 'click buttom rename and sort' type 'I'.
+      when 'SC'. message 'click CS' type 'I'.
+    endcase.
+  endmethod.                    "HANDLE_user_command
+
+
+  method handle_toolbar_alv.
+    data: wa_tool   type stb_button.
+    wa_tool-function = 'ZFC1'.
+    wa_tool-text     = '_temp'.
+    append wa_tool to e_object->mt_toolbar.
+  endmethod.                    "toolbar
+
+
+
+
+
+  method handle_toolbar_alv2.
+
+    data: grid_ref type ref to cl_gui_alv_grid.
+    grid_ref ?= sender.
+
+*    case  grid_ref.
+*      when go_alv.
+*        delete e_object->mt_toolbar[]
+*           where  function ne '&MB_VARIANT' .
+**           where function ne '&LOCAL&INSERT_ROW' and function ne '&MB_VARIANT' .
+**      when go_alv2.
+**      when go_alv3.
+**        delete e_object->mt_toolbar[] where  function ne '&MB_VARIANT' .
+**      when others.
+**        delete e_object->mt_toolbar[] where function ne '&LOCAL&INSERT_ROW' and function ne '&MB_VARIANT' .
+*    endcase.
+
+    data ls_button type stb_button.
+
+    clear ls_button.
+    ls_button-icon = '@38@'.
+    ls_button-quickinfo = '_tempBindex1 quick'.
+    ls_button-text = 'tempBindex1 text'.
+    ls_button-function = 'TEMPIND1'.
+    ls_button-butn_type = 0.
+    insert ls_button into e_object->mt_toolbar index 1.
+
+    clear ls_button.
+    ls_button-icon = '@2X@'.
+    ls_button-quickinfo = '_tempBindex2 quick'.
+    ls_button-text = 'tempBindex2 text'.
+    ls_button-function = 'TEMPIND2'.
+    ls_button-butn_type = 0.
+    insert ls_button into e_object->mt_toolbar index 1.
+
+
+*'&SORT'
+*'&SORT_ASC'
+
+    "подменяем кнопку, чтобы не создавать новую
+    data lr_button type ref to stb_button.
+    loop at e_object->mt_toolbar reference into lr_button
+      "where function eq '&LOCAL&INSERT_ROW' or function eq '&LOCAL&DELETE_ROW'.
+      where function eq '&SORT' or function eq '&SORT_ASC'.
+      shift lr_button->function left by 7 places.  " delete left 7 simbol
+      "edit code function for user command
+      case  grid_ref.
+        when go_alv.
+          lr_button->text = lr_button->quickinfo = 'Rename button'.
+*        when go_alv_motion.
+*          lr_button->function+6(4) = ''.
+*          lr_button->text = lr_button->quickinfo = 'Присвоить № П/Ф для списания'.
+      endcase.
+    endloop.
+
+
+  endmethod.                    "handle_toolbar_alv2
+
+
+
+  method handle_data_changed.
+    data:
+            lt_mod_cells type lvc_t_modi,  "Измененные ячейки
+            ls_mod_cells type lvc_s_modi,
+            l_edit_row_num type i,
+            l_row_was_edited type c.
+
+    field-symbols <fs_table> like line of gt_table.
+
+    field-symbols <fs> type any.
+
+    lt_mod_cells[] = er_data_changed->mt_mod_cells[].
+*
+*    read table  lt_mod_cells transporting no fields with key error = 'X'.
+*    if sy-subrc = 0.
+*      exit.
+*    endif.
+
+    read table  lt_mod_cells into ls_mod_cells index 1.
+    if sy-subrc eq 0.
+      read table gt_table assigning <fs_table> index ls_mod_cells-row_id.
+      if sy-subrc eq 0. "and <ls_koef>-ind_act ne 'I'.
+        assign component ls_mod_cells-fieldname of structure <fs_table> to <fs>.
+        if sy-subrc = 0.
+          call function 'CHAR_FLTP_CONVERSION'
+            exporting
+              string = ls_mod_cells-value
+            importing
+              flstr  = <fs>.
+*          <fs> = ls_mod_cells-value.
+*          _set_icon_act( changing cs_koef = <ls_koef> ).
+
+          if <fs_table>-gamng is initial.
+            <fs_table>-icon_act = gv_icon_warning.
+          endif.
+
+          if <fs_table>-gamng is not initial.
+            <fs_table>-icon_act = gv_icon_ok.
+          endif.
+
+        endif.
+      endif.
+    endif.
+  endmethod.                    "handle_data_changed
+
+
+  method get_fieldcatalog_alv.
+    field-symbols <ls_field> like line of rt_field.
+
+    data ls_table like line of gt_table.
+
+    data lv_struct type dd02l-tabname.
+    data lo_struct type ref to cl_abap_structdescr.
+
+    data: lt_comp type abap_compdescr_tab,
+          ls_comp like line of lt_comp.
+
+    lo_struct ?= cl_abap_typedescr=>describe_by_data( p_data = ls_table ).
+    lt_comp = lo_struct->components[].
+
+    loop at lt_comp into ls_comp.
+      append initial line to rt_field assigning <ls_field>.
+      <ls_field>-fieldname = ls_comp-name.
+    endloop.
+
+    loop at rt_field assigning <ls_field>.
+      case <ls_field>-fieldname.
+        when 'PPLAN'.
+          <ls_field>-scrtext_s =
+          <ls_field>-scrtext_m = <ls_field>-scrtext_l = 'План'.
+          <ls_field>-outputlen = '15'.
+          <ls_field>-col_pos = 0.
+          <ls_field>-fix_column = abap_on.
+        when 'VERSION'.
+          <ls_field>-scrtext_s = <ls_field>-scrtext_m  =
+          <ls_field>-scrtext_l = 'Версия'.
+          <ls_field>-outputlen = '30'.
+        when 'PRNODE'.
+          <ls_field>-scrtext_s = <ls_field>-scrtext_m =
+          <ls_field>-scrtext_l = 'Узел'.
+          <ls_field>-outputlen = 10.
+        when 'MATNR'.
+          <ls_field>-scrtext_s = 'Наим.мат.'.
+          <ls_field>-scrtext_m = <ls_field>-scrtext_l = 'Наименование материала'.
+          <ls_field>-outputlen = 30.
+          <ls_field>-edit = abap_on.
+        when 'GAMNG'.
+          <ls_field>-scrtext_s = 'Факт'.
+          <ls_field>-scrtext_m = <ls_field>-scrtext_l = 'Факт. объем'.
+          <ls_field>-do_sum = abap_on.
+          <ls_field>-edit = 'X'.
+          <ls_field>-domname = 'MENGV13'.
+          <ls_field>-decimals = '3'.
+        when 'ICON_ACT'.
+          <ls_field>-scrtext_s = 'ind'.
+          <ls_field>-scrtext_m = <ls_field>-scrtext_l = 'ind'.
+        when others.
+          <ls_field>-no_out = abap_on.
+      endcase.
+    endloop.
+
+  endmethod.                    "get_fieldcatalog_alv
+
+
+  method get_sorted_alv.
+    refresh rt_sort.
+  endmethod.                    "get_sorted_alv
+
+  method get_layout_view_alv.
+    clear: rs_layout.
+    rs_layout-zebra = abap_on.
+    "rs_layout-no_toolbar = abap_on.
+    rs_layout-totals_bef = abap_on.
+    "rs_layout-sel_mode = 'A'.
+    "rs_layout-edit_mode = 'X'.
+  endmethod.                    "get_layout_view_alv
+
+
+  method get_function_alv.
+
+    define add_func_code.
+      append &1 to rt_func.
+    end-of-definition.
+
+    refresh: rt_func.
+    add_func_code cl_gui_alv_grid=>mc_fc_auf.
+    add_func_code cl_gui_alv_grid=>mc_fc_average.
+    add_func_code cl_gui_alv_grid=>mc_fc_back_classic.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_abc.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_chain.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_crbatch.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_crweb.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_lineitems.
+*    add_func_code cl_gui_alv_grid=>mc_fc_call_master_data.
+*    add_func_code cl_gui_alv_grid=>mc_fc_call_more.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_report.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_xint.
+    add_func_code cl_gui_alv_grid=>mc_fc_call_xxl.
+    add_func_code cl_gui_alv_grid=>mc_fc_check.
+    add_func_code cl_gui_alv_grid=>mc_fc_col_invisible.
+    add_func_code cl_gui_alv_grid=>mc_fc_col_optimize.
+*    add_func_code cl_gui_alv_grid=>mc_fc_current_variant.
+    add_func_code cl_gui_alv_grid=>mc_fc_data_save.
+    add_func_code cl_gui_alv_grid=>mc_fc_delete_filter.
+*    add_func_code cl_gui_alv_grid=>MC_FC_DESELECT_ALL.
+*    add_func_code cl_gui_alv_grid=>mc_fc_detail.
+*    add_func_code cl_gui_alv_grid=>MC_FC_EXCL_ALL.
+    add_func_code cl_gui_alv_grid=>mc_fc_expcrdata.
+    add_func_code cl_gui_alv_grid=>mc_fc_expcrdesig.
+    add_func_code cl_gui_alv_grid=>mc_fc_expcrtempl.
+    add_func_code cl_gui_alv_grid=>mc_fc_expmdb.
+    add_func_code cl_gui_alv_grid=>mc_fc_extend.
+    add_func_code cl_gui_alv_grid=>mc_fc_f4.
+*    add_func_code cl_gui_alv_grid=>mc_fc_filter.
+*    add_func_code cl_gui_alv_grid=>mc_fc_find.
+    add_func_code cl_gui_alv_grid=>mc_fc_fix_columns.
+    add_func_code cl_gui_alv_grid=>mc_fc_graph.
+    add_func_code cl_gui_alv_grid=>mc_fc_help.
+    add_func_code cl_gui_alv_grid=>mc_fc_html.
+    add_func_code cl_gui_alv_grid=>mc_fc_info.
+    add_func_code cl_gui_alv_grid=>mc_fc_load_variant.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_append_row.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_copy.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_copy_row.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_cut.
+*    add_func_code cl_gui_alv_grid=>mc_fc_loc_delete_row.
+*    add_func_code cl_gui_alv_grid=>mc_fc_loc_insert_row.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_move_row.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_paste.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_paste_new_row.
+    add_func_code cl_gui_alv_grid=>mc_fc_loc_undo.
+    add_func_code cl_gui_alv_grid=>mc_fc_maintain_variant.
+    add_func_code cl_gui_alv_grid=>mc_fc_maximum.
+    add_func_code cl_gui_alv_grid=>mc_fc_minimum.
+    add_func_code cl_gui_alv_grid=>mc_fc_pc_file.
+    add_func_code cl_gui_alv_grid=>mc_fc_print.
+    add_func_code cl_gui_alv_grid=>mc_fc_print_back.
+    add_func_code cl_gui_alv_grid=>mc_fc_print_prev.
+*    add_func_code cl_gui_alv_grid=>mc_fc_refresh.
+    add_func_code cl_gui_alv_grid=>mc_fc_reprep.
+    add_func_code cl_gui_alv_grid=>mc_fc_save_variant.
+*    add_func_code cl_gui_alv_grid=>MC_FC_SELECT_ALL.
+    add_func_code cl_gui_alv_grid=>mc_fc_send.
+    add_func_code cl_gui_alv_grid=>mc_fc_separator.
+*    add_func_code cl_gui_alv_grid=>MC_FC_SORT.
+*    add_func_code cl_gui_alv_grid=>MC_FC_SORT_ASC.
+*    add_func_code cl_gui_alv_grid=>MC_FC_SORT_DSC.
+    add_func_code cl_gui_alv_grid=>mc_fc_subtot.
+*    add_func_code cl_gui_alv_grid=>mc_fc_sum.
+    add_func_code cl_gui_alv_grid=>mc_fc_to_office.
+    add_func_code cl_gui_alv_grid=>mc_fc_to_rep_tree.
+    add_func_code cl_gui_alv_grid=>mc_fc_unfix_columns.
+    add_func_code cl_gui_alv_grid=>mc_fc_views.
+    add_func_code cl_gui_alv_grid=>mc_fc_view_crystal.
+    add_func_code cl_gui_alv_grid=>mc_fc_view_excel.
+    add_func_code cl_gui_alv_grid=>mc_fc_view_grid.
+    add_func_code cl_gui_alv_grid=>mc_fc_word_processor.
+
+
+  endmethod.                    "get_function_alv
+
+
+endclass.                    "lc_alv_table IMPLEMENTATION
+
+
+data go_table type ref to lcl_alv_table.

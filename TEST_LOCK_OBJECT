@@ -1,0 +1,64 @@
+*&---------------------------------------------------------------------*
+*& Report  ZDDM_TEST_LOCK_OBJECT
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+report test_lock_object.
+
+"Lock object with edit table in database
+
+tables: sscrfields.
+
+include zddm_test_lock_ob_dt.
+include zddm_test_lock_ob_ss.
+include zddm_test_lock_ob_cl.
+include zddm_test_lock_ob_fm.
+include zddm_test_lock_ob_scr100.
+
+
+*  кнопка на CC экране
+selection-screen function key 1.
+
+at selection-screen.
+  "отработка кнопки
+  perform user_command_ss.
+
+initialization.
+  perform init_button_ss. "icon for button in ss
+  text1 = 'text1'.
+  text2 = 'text2'.
+
+
+start-of-selection.
+
+  create object go_table
+    exporting
+      iv_pplan           = p_pplan
+      iv_version         = p_vers
+      iv_edit_mode       = p_edit
+      iv_error           = p_error
+    exceptions
+      cx_error_parameter = 1
+      cx_data_not_found  = 2
+      cx_block_db        = 3.
+  if sy-subrc ne 0.
+    case sy-subrc.
+      when 1.
+        message 'Error from creating object' type 'S'.
+      when 2.
+        message 'Data not found' type 'S'.
+      when 3.
+        message 'Block db' type 'S'.
+    endcase.
+
+  else.
+    call screen 100.
+  endif.
+
+
+
+
+end-of-selection.

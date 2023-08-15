@@ -1,0 +1,30 @@
+*----------------------------------------------------------------------*
+***INCLUDE TEST_LOCK_OB_SS.
+*----------------------------------------------------------------------*
+SELECTION-SCREEN BEGIN OF BLOCK werks WITH FRAME
+                       TITLE title1.
+PARAMETERS:
+   p_pplan LIKE zddm_test-pplan   OBLIGATORY DEFAULT '1536',
+   p_vers  LIKE zddm_test-version OBLIGATORY DEFAULT '1'.
+PARAMETERS p_edit  AS CHECKBOX DEFAULT 'X'.
+SELECTION-SCREEN END OF BLOCK werks.
+
+
+SELECTION-SCREEN BEGIN OF BLOCK error.
+PARAMETERS p_txted AS CHECKBOX DEFAULT 'X'.
+
+PARAMETERS p_error AS CHECKBOX DEFAULT 'X'.
+PARAMETERS p_err_cx AS CHECKBOX DEFAULT ''.
+PARAMETERS p_err_nd AS CHECKBOX DEFAULT ''.
+SELECTION-SCREEN END OF BLOCK error.
+
+
+
+
+
+SELECTION-SCREEN COMMENT /1(30) text1.
+SELECTION-SCREEN ULINE /1(30).
+SELECTION-SCREEN COMMENT /1(30) text2.
+
+INITIALIZATION.
+  title1 = 'План и версия'.

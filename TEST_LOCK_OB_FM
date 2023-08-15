@@ -1,0 +1,26 @@
+*----------------------------------------------------------------------*
+***INCLUDE TEST_LOCK_OB_FM.
+*----------------------------------------------------------------------*
+form user_command_ss.
+    if sscrfields-ucomm = 'FC01'.
+      MESSAGE 'run button' type 'S'.
+  endif.
+endform.
+
+
+form init_button_ss .
+* создание иконки
+  call function 'ICON_CREATE'
+    exporting
+      name                  = 'ICON_DOC'
+      text                  = '_temp'
+      info                  = space
+      add_stdinf            = 'X'
+    importing
+      result                = sscrfields-functxt_01
+    exceptions
+      icon_not_found        = 1
+      outputfield_too_short = 2
+      others                = 3.
+
+endform.                    " INIT
